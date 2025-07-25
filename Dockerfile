@@ -1,31 +1,45 @@
-# Imagem base oficial Python 3.11 slim (mais leve)
+# Base oficial do Python 3.11 slim (mais leve)
 FROM python:3.11-slim
 
-# Diretório de trabalho dentro do container
+# Variáveis de ambiente (melhora logs e evita arquivos .pyc)
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VIRTUALENVS_CREATE=false
+
+# Diretório de trabalho no container
 WORKDIR /app
 
-# Evitar criação de arquivos .pyc e buffer no stdout/stderr (útil para logs)
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Atualizar pacotes e instalar dependências do sistema (curl e gcc podem ser necessários)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    curl \
+# Instalações de dependências do sistema e limpeza para reduzir imagem
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        curl \
+        libpq-dev \
+        libffi-dev \
+        libssl-dev \
+        netcat \
+        ca-certificates \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar arquivo de dependências para cache do Docker
+# Copia apenas requirements.txt inicialmente para melhor cache
 COPY requirements.txt .
 
-# Instalar dependências Python
-RUN pip install --no-cache-dir -r requirements.txt
+# Atualiza pip e instala as dependências
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
-# Copiar o código fonte para dentro do container
+# Copia o restante da aplicação
 COPY . .
 
-# Expõe a porta onde o Flask irá rodar
+# Ajusta permissões (boa prática para segurança)
+RUN adduser --disabled-password appuser && \
+    chown -R appuser /app
+USER appuser
+
+# Expõe a porta do Flask/Gunicorn
 EXPOSE 5000
 
-# Comando para iniciar o servidor Gunicorn com 4 workers
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "app:app"]
+# Comando padrão: Gunicorn com auto reload em dev ou pronto para prod
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers=4", "--threads=2", "--timeout=120", "app:app"]
