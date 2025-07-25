@@ -1,15 +1,21 @@
-# Base oficial do Python 3.11 slim (mais leve)
+# 📦 Imagem base oficial Python 3.11 Slim (leve e segura)
 FROM python:3.11-slim
 
-# Variáveis de ambiente (melhora logs e evita arquivos .pyc)
+# 🛠️ Variáveis de ambiente: evita arquivos .pyc e ativa logs imediatos
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    POETRY_VIRTUALENVS_CREATE=false
+    POETRY_VIRTUALENVS_CREATE=false \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Diretório de trabalho no container
+# 🗂️ Define o diretório de trabalho
 WORKDIR /app
 
-# Instalações de dependências do sistema e limpeza para reduzir imagem
+# 🔒 Cria um usuário não-root para rodar a aplicação com mais segurança
+RUN addgroup --system appuser && \
+    adduser --system --ingroup appuser --disabled-password appuser
+
+# 🧱 Instala dependências essenciais do sistema e remove cache
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -20,26 +26,28 @@ RUN apt-get update && \
         libssl-dev \
         netcat \
         ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copia apenas requirements.txt inicialmente para melhor cache
+# 📄 Copia apenas o arquivo de dependências para melhor cache
 COPY requirements.txt .
 
-# Atualiza pip e instala as dependências
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+# 🔄 Atualiza o pip e instala dependências do Python
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
 
-# Copia o restante da aplicação
+# 📦 Copia o restante do código da aplicação
 COPY . .
 
-# Ajusta permissões (boa prática para segurança)
-RUN adduser --disabled-password appuser && \
-    chown -R appuser /app
+# 🔐 Ajusta permissões da pasta da aplicação
+RUN chown -R appuser:appuser /app
+
+# 👤 Troca para o usuário de execução seguro
 USER appuser
 
-# Expõe a porta do Flask/Gunicorn
+# 📢 Expõe a porta padrão da aplicação (Flask/Gunicorn)
 EXPOSE 5000
 
-# Comando padrão: Gunicorn com auto reload em dev ou pronto para prod
+# 🚀 Comando de inicialização com Gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers=4", "--threads=2", "--timeout=120", "app:app"]
